@@ -1,9 +1,11 @@
+# NOTE: The original repository is taken from Gitlab (https://git.wur.nl/geoscripting-2023-january/staff/project/Project_Starter-Porco_Rosso)
+
 ## Geoscripting project repository.
 
 ### Title:
 Detecting oxbow lakes in Indonesia and monitoring their changes
 
-### Team name and members: Porco_Rosso
+### Team name and members: Porco Rosso
 
 - Joost van Dalen
 - Wessel van Leesten
@@ -15,7 +17,7 @@ Detecting oxbow lakes in Indonesia and monitoring their changes
 - own
 
 ### Description, how to run/reproduce:
-- A Google Earth Engine script has been used to detect and mannually download water in a predefined area. The data is downloaded for multiple dates.
+- A Google Earth Engine script has been used to detect and manually download water in a predefined area. The data is downloaded for multiple dates.
 - A zipped file with these geojsons has been uploaded to teams. It is located in Groupwork - files - oxbow gang - scripts.
 - This zipped file must be uploaded in a data directory in the folder the main.sh is run from.
 - Open a terminal in the directory where the main.sh file is located and run ./main.sh in a line.

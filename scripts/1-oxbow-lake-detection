@@ -1,0 +1,116 @@
+// Geoscripting 2023
+// Oxbow Gang:
+//              Isabeau Verbrugge
+//              Joost van Dalen
+//              Nikolas Theofanous
+//              Wessel van Leesten
+//              Isaura Menezes de Oliveira Guido
+// Identification of Oxbow Lakes in West-Papua, Indonesia
+
+// This script retrieves surface water bodies from SAR imagery in the following steps:
+// 1. First manually load in the area of interest centered in western New Guinea
+// 2. Manually select dates of interest
+// 3. Load SAR data (from Sentinel-1) and perform simple speckle filter on the VV band
+// 4. From here we select water features based on the backscatter values retrieved
+// 5. Vectorize the raster cells and export as GeoJSON using URL
+// 6. It also creates a interactive map which is great for error-handeling
+
+
+// Area of interest
+// Loading of Sentinel data is based on code by Francisco J. Peña at https://medium.com/@melqkiades/water-detection-using-ndwi-on-google-earth-engine-2919a9bf1951
+var areaOfInterest =
+    ee.Geometry.Polygon(
+      [[[138.2858054484003674,-3.5682801082388473],
+      [139.2891321754671594, -3.5682801082388473],
+        [139.2891321754671594,-2.5547098609382686],
+        [138.2858054484003674, -2.5547098609382686]]]);
+Map.centerObject(areaOfInterest, 11);
+Map.addLayer(areaOfInterest, {color: 'FF0000'}, "Study area");
+
+// Load Sentinel-2 data
+var startDate = '2018-07-28';
+var endDate = '2018-07-31';
+// Returns all the images between the start date and the end date
+// taken on the area of interest
+var sentinelImageCollection = ee.ImageCollection('COPERNICUS/S1_GRD')
+                  .filterBounds(areaOfInterest)
+                  
+                  .filterDate(startDate, endDate);
+                  
+print("Number of images = ", sentinelImageCollection.size());
+
+//Add first image to map to get an idea of what the SAR image looks like  
+//Map.addLayer(sentinelImageCollection,{bands: 'VV',min: -18, max: 0}, 'SAR image') // Without speckle filter
+
+// Code is based on https://mbonnema.github.io/GoogleEarthEngine/07-SAR-Water-Classification/
+// Filter speckle noise
+var filterSpeckles = function(image) {
+  var img = image.clip(areaOfInterest); // Reduce memory usage by only selecting pixels within study area
+  var vv = img.select('VV') //select the VV polarization band
+  var vv_smoothed = vv.focal_median(100,'circle','meters').rename('VV_Filtered') //Apply a focal median filter
+  return img.addBands(vv_smoothed) // Add filtered VV band to original image
+}
+
+// Map speckle noise filter across collection. Result is same collection, with smoothed VV band added to each image
+sentinelImageCollection = sentinelImageCollection.map(filterSpeckles)
+
+//Add speckle filtered image to map to sompare with raw SAR image
+Map.addLayer(sentinelImageCollection,{bands: 'VV_Filtered',min: -18, max: 0}, 'Filtered SAR image') // With speckle filter
+
+//Here we are using -16. This is only an approximation and will result in some errors. 
+// TODO: Create training dataset or use more robust stastical technique
+var classifyWater = function(img) {
+  var vv = img.select('VV_Filtered')
+  var water = vv.lt(-16).rename('water')  //Identify all pixels below threshold and set them equal to 1. All other pixels set to 0
+  water = water.updateMask(water) //Remove all pixels equal to 0
+  return img.addBands(water)  //Return image with added classified water band
+}
+
+//Map classification across sentinel-1 collection
+sentinelImageCollection = sentinelImageCollection.map(classifyWater)
+
+// Add output of classification to the map
+//print(sentinelImageCollection)
+Map.addLayer(sentinelImageCollection, {
+                                      bands: 'water',
+                                      min: 1, // Only show water
+                                      palette: "8ecae6",
+                                      },
+                                      "surface water"
+  
+)
+
+var water_polygon = function(img){
+  //print("Creating water polygons")  // For error-handeling
+  var img_water = img.select('water') // Select only a single band, otherwise code does not function
+  
+  var water_polygons = img_water.reduceToVectors({
+    reducer: ee.Reducer.countEvery(),
+    geometry: areaOfInterest,
+    geometryType: 'polygon',
+    scale: 20, // TODO: Not sure if scale is correct
+    maxPixels: 1e8
+  })
+  return water_polygons
+};
+
+print("Creating water features from the SAR image")
+var polygons = sentinelImageCollection.map(water_polygon)
+
+
+// Currently there is a nested featurecollection which can not be exported by GEE
+// Therefore, we need to flatten it into a singe list without any nests
+var polygons_flattened = polygons.flatten()
+print(polygons_flattened)
+
+// Get a download URL for the FeatureCollection.
+var downloadUrl = polygons_flattened.getDownloadURL({
+  format: 'geojson',
+  //selectors: ['capacitymw', 'fuel1'],
+  filename: 'WaterPolygonsExport'
+});
+
+print('URL for downloading FeatureCollection as GeoJSON', downloadUrl);
+
+Map.addLayer(polygons_flattened, {color: '023047'}, "Water Polygons");
+print("Finished the map")
